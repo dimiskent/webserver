@@ -9,7 +9,13 @@ import java.nio.file.Path;
 
 public class Handlers implements HttpHandler {
     public void handle(HttpExchange exchange) throws IOException {
+        // TODO 1: Add Main.class as index support
+        // TODO 2: Implement "path.redirect" files
         String fullUrlPath = exchange.getRequestURI().toString();
+        if(fullUrlPath.length() == 1) {
+            // index.html by default
+            fullUrlPath = "/index.html";
+        }
         String[] maker = fullUrlPath.split("\\?");
         String safeParam = maker.length != 2 ? null : maker[1];
         System.out.println("Obtaining " + maker[0]);
