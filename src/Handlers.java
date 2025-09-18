@@ -45,7 +45,6 @@ public class Handlers implements HttpHandler {
                 if(getParams != null) {
                     command += " " + getParams;
                 }
-                // TODO: Change exec to something not deprecated?
                 Process p2 = Runtime.getRuntime().exec(command);
                 BufferedReader br=new BufferedReader(new InputStreamReader(p2.getInputStream()));
                 BufferedReader errorbr=new BufferedReader(new InputStreamReader(p2.getErrorStream()));
@@ -73,12 +72,15 @@ public class Handlers implements HttpHandler {
             // System.out.println(e.getMessage());
             String errorType = e.getClass().getName();
             System.out.println("Error: " + errorType);
-            if(errorType.equals("java.io.FileNotFoundException")) {
-                res.code = 403;
-                res.response = "Forbidden >:(";
-            } else {
-                res.code = 500;
-                res.response = "Unknown error :0";
+            res.contentType = "text/plain";
+            switch (errorType) {
+                case "java.io.FileNotFoundException":
+                    res.code = 403;
+                    res.response = "Forbidden >:(";
+                    break;
+                default:
+                    res.code = 500;
+                    res.response = "Unknown error :0";
             }
             return res;
         }
