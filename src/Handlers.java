@@ -1,29 +1,20 @@
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
-import jdk.jfr.ContentType;
-
 import java.io.*;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.nio.file.Files;
-import java.util.Arrays;
 import java.util.Scanner;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
-import javax.script.ScriptEngine;
-import javax.script.ScriptEngineManager;
-import javax.tools.JavaCompiler;
-import javax.tools.ToolProvider;
 
 public class Handlers implements HttpHandler {
     public void handle(HttpExchange exchange) throws IOException {
         String fullUrlPath = exchange.getRequestURI().toString();
         String[] maker = fullUrlPath.split("\\?");
         String safeParam = maker.length != 2 ? null : maker[1];
+        System.out.println("Obtaining " + maker[0]);
         Response response = getContents(maker[0], safeParam);
         String reply = response.response;
-        System.out.println(exchange.getRequestURI());
         Headers responseHeaders = exchange.getResponseHeaders();
         responseHeaders.set("Content-Type", response.contentType);
         exchange.sendResponseHeaders(response.code, reply.length());
@@ -54,8 +45,7 @@ public class Handlers implements HttpHandler {
                 if(getParams != null) {
                     command += " " + getParams;
                 }
-                System.out.println(fileName);
-                System.out.println(command);
+                // TODO: Change exec to something not deprecated?
                 Process p2 = Runtime.getRuntime().exec(command);
                 BufferedReader br=new BufferedReader(new InputStreamReader(p2.getInputStream()));
                 BufferedReader errorbr=new BufferedReader(new InputStreamReader(p2.getErrorStream()));
@@ -69,6 +59,7 @@ public class Handlers implements HttpHandler {
                 {
                     errorString += err + "<br>";
                 }
+                System.out.printf("--- Java Output ---\n%s\n--- Java Error ---\n%s\n", res.response, errorString);
                 if(errorString != null) {
                     // goes to exception!
                     res.code = 500;
@@ -79,18 +70,18 @@ public class Handlers implements HttpHandler {
             }
             return res;
         } catch (Exception e) {
-            System.out.println(e.getMessage());
-            String errorType = e.getClass().toString().split(" ")[1];
-            switch (errorType) {
-                case "java.io.FileNotFoundException":
-                    res.code = 403;
-                    res.response = "Forbidden >:(";
-                    break;
-                default:
-                    res.code = 500;
-                    res.response = "Unknown Error :0";
+            // System.out.println(e.getMessage());
+            String errorType = e.getClass().getName();
+            System.out.println("Error: " + errorType);
+            if(errorType.equals("java.io.FileNotFoundException")) {
+                res.code = 403;
+                res.response = "Forbidden >:(";
+            } else {
+                res.code = 500;
+                res.response = "Unknown error :0";
             }
             return res;
         }
+
     }
 }
