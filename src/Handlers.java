@@ -111,10 +111,10 @@ public class Handlers implements HttpHandler {
         String fileName = path.getFileName().toString().split("\\.")[0];
         String command = "java -cp \"" + path.getParent().toString() + "\" " + fileName;
         if(getParams != null) {
-            command += " " + getParams;
+            command += " GET:" + getParams;
         }
         if(!postParams.isEmpty()) {
-            command += " " + postParams;
+            command += " POST:" + postParams;
         }
         Process p2 = Runtime.getRuntime().exec(command.split(" "));
         BufferedReader br=new BufferedReader(new InputStreamReader(p2.getInputStream()));
@@ -124,7 +124,12 @@ public class Handlers implements HttpHandler {
         String out, err, errorString = null;
         while( (out=br.readLine())!=null)
         {
-            res.response += out + "<br>";
+            if(out.startsWith("${JAVA_CONTENT_TYPE}"))
+                res.contentType = out.substring(21);
+            else if(out.startsWith("${JAVA_HTTP_RESPONSE_CODE}"))
+                res.code = Integer.parseInt(out.substring(out.length() - 3));
+            else
+                res.response += out + (res.contentType.equals("text/html") ? "<br>" : "\n");
         }
         while( (err=errorbr.readLine())!=null)
         {
