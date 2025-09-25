@@ -2,35 +2,76 @@ import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Scanner;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 
 public class Handlers implements HttpHandler {
+    public Path path = FileSystems.getDefault().getPath(System.getProperty("user.dir"), "pub");
     public void handle(HttpExchange exchange) throws IOException {
-        // TODO 1: Add Main.class as index support
-        // TODO 2: Implement "path.redirect" files
         String fullUrlPath = exchange.getRequestURI().toString();
-        if(fullUrlPath.length() == 1) {
-            // index.html by default
-            fullUrlPath = "/index.html";
-        }
         String[] maker = fullUrlPath.split("\\?");
+
+        if(maker[0].length() == 1) {
+            // index.html by default
+            Path path = FileSystems.getDefault().getPath(this.path.toString(), "Main.class");
+            File indexClass = new File(path.toUri());
+            maker[0] = indexClass.exists() ? "/Main.class" : "/index.html";
+        }
         String safeParam = maker.length != 2 ? null : maker[1];
         System.out.println("Obtaining " + maker[0]);
-        Response response = getContents(maker[0], safeParam);
-        String reply = response.response;
+        Response response;
         Headers responseHeaders = exchange.getResponseHeaders();
+
+        Scanner post = new Scanner(new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8));
+        StringBuilder postVars = new StringBuilder();
+        while (post.hasNextLine()) {
+            postVars.append(post.nextLine()).append("&");
+        }
+        if(!postVars.isEmpty()) {
+            postVars = new StringBuilder(postVars.substring(0, postVars.length() - 1));
+        }
+
+        String redirectTest = tryRedirect(maker[0]);
+        if(redirectTest.isEmpty()) {
+            response = getContents(maker[0], safeParam, postVars.toString());
+        } else {
+            System.out.printf("Redirecting user from %s towards %s\n", maker[0], redirectTest);
+            response = new Response(301, "Redirecting to <a href='" + redirectTest  + "'>", "text/html");
+            responseHeaders.set("Location", redirectTest);
+        }
         responseHeaders.set("Content-Type", response.contentType);
+        String reply = response.response;
         exchange.sendResponseHeaders(response.code, reply.length());
         OutputStream stream = exchange.getResponseBody();
         stream.write(reply.getBytes());
         stream.close();
     }
-    private Response getContents(String filePath, String getParams) {
+    private String tryRedirect(String path) throws FileNotFoundException {
+        File redirectsFile = new File("cnf/redirects.txt");
+        if(!redirectsFile.exists()) {
+            return "";
+        }
+        StringBuilder redirectsText = new StringBuilder();
+        Scanner fileScanner = new Scanner(redirectsFile);
+        while (fileScanner.hasNextLine()) {
+            redirectsText.append(fileScanner.nextLine()).append("\n");
+        }
+        String[] redirects = redirectsText.toString().split("\n");
+        String[][] paths = new String[redirects.length][2];
+        for(int i = 0; i < redirects.length; i++) {
+            paths[i] = redirects[i].split(" ");
+            if(path.toLowerCase().startsWith(paths[i][0].toLowerCase())) {
+                return paths[i][1];
+            }
+        }
+        return "";
+    }
+    private Response getContents(String filePath, String getParams, String postParams) {
         Response res = new Response(200, "", "text/plain");
-        Path path = FileSystems.getDefault().getPath(System.getProperty("user.dir"), "pub", filePath);
+        Path path = FileSystems.getDefault().getPath(this.path.toString(), filePath);
         File myFile = new File(path.toUri());
         if(!myFile.exists()) {
             res.code = 404;
@@ -45,33 +86,7 @@ public class Handlers implements HttpHandler {
             }
             scan.close();
             if(filePath.endsWith("class")) {
-                res.contentType = "text/html";
-                String fileName = path.getFileName().toString().split("\\.")[0];
-                String command = "java -cp \"" + path.getParent().toString() + "\" " + fileName;
-                if(getParams != null) {
-                    command += " " + getParams;
-                }
-                Process p2 = Runtime.getRuntime().exec(command);
-                BufferedReader br=new BufferedReader(new InputStreamReader(p2.getInputStream()));
-                BufferedReader errorbr=new BufferedReader(new InputStreamReader(p2.getErrorStream()));
-
-                String out, err, errorString = null;
-                while( (out=br.readLine())!=null)
-                {
-                    res.response += out + "<br>";
-                }
-                while( (err=errorbr.readLine())!=null)
-                {
-                    errorString += err + "<br>";
-                }
-                System.out.printf("--- Java Output ---\n%s\n--- Java Error ---\n%s\n", res.response, errorString);
-                if(errorString != null) {
-                    // goes to exception!
-                    res.code = 500;
-                    res.response = "<h1><font color=red>ERROR</font></h1>" + errorString;
-                    return res;
-                }
-                p2.waitFor();
+                res = evalClass(path, getParams, postParams);
             }
             return res;
         } catch (Exception e) {
@@ -91,5 +106,38 @@ public class Handlers implements HttpHandler {
             return res;
         }
 
+    }
+    private Response evalClass(Path path, String getParams, String postParams) throws InterruptedException, IOException {
+        String fileName = path.getFileName().toString().split("\\.")[0];
+        String command = "java -cp \"" + path.getParent().toString() + "\" " + fileName;
+        if(getParams != null) {
+            command += " " + getParams;
+        }
+        if(!postParams.isEmpty()) {
+            command += " " + postParams;
+        }
+        Process p2 = Runtime.getRuntime().exec(command.split(" "));
+        BufferedReader br=new BufferedReader(new InputStreamReader(p2.getInputStream()));
+        BufferedReader errorbr=new BufferedReader(new InputStreamReader(p2.getErrorStream()));
+        Response res = new Response(200, "", "text/html");
+
+        String out, err, errorString = null;
+        while( (out=br.readLine())!=null)
+        {
+            res.response += out + "<br>";
+        }
+        while( (err=errorbr.readLine())!=null)
+        {
+            errorString += err + "<br>";
+        }
+        System.out.printf("--- Java Output ---\n%s\n--- Java Error ---\n%s\n", res.response, errorString);
+        if(errorString != null) {
+            // goes to exception!
+            res.code = 500;
+            res.response = "<h1><font color=red>ERROR</font></h1>" + errorString;
+            return res;
+        }
+        p2.waitFor();
+        return res;
     }
 }
