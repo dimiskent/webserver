@@ -108,7 +108,8 @@ public class Handlers implements HttpHandler {
 
     }
     private Response evalClass(Path path, String getParams, String postParams) throws InterruptedException, IOException {
-        String fileName = path.getFileName().toString().split("\\.")[0];
+        String fileName = path.getFileName().toString();
+        fileName = fileName.substring(0, fileName.length() - 6); // better implementation
         String command = "java -cp \"" + path.getParent().toString() + "\" " + fileName;
         if(getParams != null) {
             command += " GET:" + getParams;
